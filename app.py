@@ -2,20 +2,13 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import gpxpy
-import folium
 import matplotlib.pyplot as plt
-import matplotlib.patheffects as path_effects
 from matplotlib.figure import Figure
 from PIL import Image, ImageDraw, ImageFont
 import io
-import base64
 from io import BytesIO
-import os
 from datetime import datetime
-import xml.etree.ElementTree as ET
-import re
-from pathlib import Path
-from matplotlib.patches import Circle
+import base64
 
 st.set_page_config(page_title="Marathon Poster Generator", layout="wide")
 
@@ -57,7 +50,7 @@ def clean_gps_data(df, smoothing_factor=5):
     
     return df
 
-# Funktion zum Generieren einer Karte aus GPS-Daten
+# Funktion zum Generieren einer simplen Route-Karte im Stil des Originalposters
 def generate_map(df, map_color, route_color, start_color, end_color):
     # Definieren der Farbpalette
     color_palettes = {
@@ -91,8 +84,8 @@ def generate_map(df, map_color, route_color, start_color, end_color):
     start_marker_color = marker_colors.get(start_color, '#FFD700')
     end_marker_color = marker_colors.get(end_color, '#FFD700')
     
-    # Figure erstellen
-    fig = Figure(figsize=(8, 8), dpi=300, facecolor=background_color)
+    # Figure erstellen - flacher, breiter Stil wie im Originaldesign
+    fig = Figure(figsize=(10, 3), dpi=300, facecolor=background_color)
     ax = fig.add_subplot(111)
     
     # Route plotten
@@ -110,60 +103,88 @@ def generate_map(df, map_color, route_color, start_color, end_color):
     ax.scatter(end_point['lon'], end_point['lat'], color=end_marker_color, s=150, marker='x', zorder=3)
     
     # Einstellungen für die Kartenansicht
-    ax.set_aspect('equal')
+    ax.set_aspect('auto')  # Ändern zu 'auto' für ein breiteres Design
     ax.axis('off')
     
     # Fügen Sie einen kleinen Puffer um die Route hinzu
-    lon_buffer = (df['lon'].max() - df['lon'].min()) * 0.1
-    lat_buffer = (df['lat'].max() - df['lat'].min()) * 0.1
+    lon_buffer = (df['lon'].max() - df['lon'].min()) * 0.05
+    lat_buffer = (df['lat'].max() - df['lat'].min()) * 0.05
     
     ax.set_xlim(df['lon'].min() - lon_buffer, df['lon'].max() + lon_buffer)
     ax.set_ylim(df['lat'].min() - lat_buffer, df['lat'].max() + lat_buffer)
     
-    fig.tight_layout()
+    fig.tight_layout(pad=0)
     
     return fig
 
+# Funktion zum Erstellen einer einfachen Beispielroute
+def create_example_route():
+    num_points = 100
+    
+    # Startpunkt
+    start_lon, start_lat = 16.35, 48.20
+    
+    # Ein paar zufällige Wegpunkte für eine realistischere Route
+    points = [(start_lon, start_lat)]
+    
+    # Erstelle eine simple Route
+    np.random.seed(42)  # Für reproduzierbare Ergebnisse
+    
+    # Erster Teil - nach links
+    for i in range(20):
+        last_lon, last_lat = points[-1]
+        points.append((last_lon - 0.005 + np.random.normal(0, 0.001), 
+                      last_lat + np.random.normal(0, 0.002)))
+    
+    # Abwärts
+    for i in range(15):
+        last_lon, last_lat = points[-1]
+        points.append((last_lon + np.random.normal(0, 0.001), 
+                      last_lat - 0.005 + np.random.normal(0, 0.001)))
+    
+    # Nach rechts
+    for i in range(35):
+        last_lon, last_lat = points[-1]
+        points.append((last_lon + 0.005 + np.random.normal(0, 0.001), 
+                      last_lat + np.random.normal(0, 0.001)))
+    
+    # Nach oben und rechts (Ende)
+    for i in range(10):
+        last_lon, last_lat = points[-1]
+        points.append((last_lon + 0.005 + np.random.normal(0, 0.001), 
+                      last_lat + 0.005 + np.random.normal(0, 0.001)))
+    
+    # Erstelle DataFrame
+    lons, lats = zip(*points)
+    df = pd.DataFrame({
+        'lat': lats,
+        'lon': lons,
+        'elevation': np.zeros(len(points)),
+        'time': [datetime.now()] * len(points)
+    })
+    
+    return df
+
 # Funktion zum Erstellen des finalen Posters
 def create_poster(map_fig, marathon_name, event_date, athlete_name, bib_number, distance, time, pace):
-    # Poster erstellen mit weißem Hintergrund
+    # Poster erstellen mit weißem Hintergrund im Minimalstil
     fig = Figure(figsize=(8.5, 12), dpi=300, facecolor='white')
     
-    # Layout festlegen
-    grid = fig.add_gridspec(5, 1, height_ratios=[0.8, 3.5, 0.2, 0.3, 0.2])
+    # Layout festlegen - wie im Originalposter
+    grid = fig.add_gridspec(14, 1, height_ratios=[1, 0.5, 4, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 1, 0.1, 0.5])
     
-    # Header: Marathon-Name und Datum
+    # Header: Marathon-Name
     ax_header = fig.add_subplot(grid[0])
     ax_header.axis('off')
-    ax_header.text(0.5, 0.7, marathon_name, fontsize=24, fontweight='bold', ha='center', va='center')
+    ax_header.text(0.5, 0.5, marathon_name, fontsize=24, fontweight='bold', ha='center', va='center')
     
-    # Formatieren des Datums
-    try:
-        if isinstance(event_date, str):
-            # Verschiedene Datumsformate probieren
-            date_formats = ['%d.%m.%Y', '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y']
-            parsed_date = None
-            
-            for fmt in date_formats:
-                try:
-                    parsed_date = datetime.strptime(event_date, fmt)
-                    break
-                except ValueError:
-                    continue
-            
-            if parsed_date:
-                formatted_date = parsed_date.strftime('%d %B %Y').upper()
-            else:
-                formatted_date = event_date
-        else:
-            formatted_date = event_date.strftime('%d %B %Y').upper()
-    except:
-        formatted_date = event_date
-    
-    ax_header.text(0.5, 0.3, formatted_date, fontsize=14, ha='center', va='center')
+    # Datum
+    ax_date = fig.add_subplot(grid[1])
+    ax_date.axis('off')
+    ax_date.text(0.5, 0.5, event_date, fontsize=14, ha='center', va='center')
     
     # Karte in der Mitte
-    ax_map = fig.add_subplot(grid[1])
+    ax_map = fig.add_subplot(grid[2])
     ax_map.axis('off')
     
     # Konvertieren der Matplotlib-Figur in ein Image
@@ -175,71 +196,26 @@ def create_poster(map_fig, marathon_name, event_date, athlete_name, bib_number, 
     # Bild auf ax_map anzeigen
     ax_map.imshow(map_img)
     
-    # Logo hinzufügen (hier ein einfaches Beispiel-Marathon-Logo)
-    ax_logo = fig.add_subplot(grid[2])
+    # Leere Zeilen zwischen Karte und Details für Abstände
+    # (werden durch height_ratios gesteuert)
+    
+    # Logo - sehr minimal, nur "42ND"
+    ax_logo = fig.add_subplot(grid[11])
     ax_logo.axis('off')
-    
-    # Erstellen eines einfachen Marathon-Logos
-    logo_fig = Figure(figsize=(2, 2), dpi=100)
-    logo_ax = logo_fig.add_subplot(111)
-    logo_ax.axis('off')
-    
-    # Zeichne einen Kreis als Logo-Hintergrund
-    circle = plt.Circle((0.5, 0.5), 0.4, color='navy')
-    logo_ax.add_patch(circle)
-    
-    # Füge Text zum Logo hinzu
-    logo_text = logo_ax.text(0.5, 0.5, f"{marathon_name.split()[0][0]}CM", color='white', 
-                            fontsize=20, fontweight='bold', ha='center', va='center')
-    logo_text.set_path_effects([path_effects.withStroke(linewidth=2, foreground='navy')])
-    
-    # Füge einen Lorbeerkranz hinzu
-    theta = np.linspace(0, 2*np.pi, 100)
-    r = 0.45
-    x = r * np.cos(theta) + 0.5
-    y = r * np.sin(theta) + 0.5
-    logo_ax.plot(x, y, 'navy', alpha=0)  # Unsichtbarer Kreis als Platzhalter
-    
-    # Zeichne ein paar Lorbeerzweige
-    leaf_color = 'navy'
-    for i in range(8):
-        angle = i * np.pi/4
-        x_leaf = 0.5 + 0.47 * np.cos(angle)
-        y_leaf = 0.5 + 0.47 * np.sin(angle)
-        dx = 0.1 * np.cos(angle + np.pi/2)
-        dy = 0.1 * np.sin(angle + np.pi/2)
-        logo_ax.plot([x_leaf, x_leaf+dx], [y_leaf, y_leaf+dy], color=leaf_color, linewidth=2)
-        logo_ax.plot([x_leaf, x_leaf-dx], [y_leaf, y_leaf-dy], color=leaf_color, linewidth=2)
-    
-    # Konvertieren des Logo in ein Image
-    logo_buf = BytesIO()
-    logo_fig.savefig(logo_buf, format='png', dpi=100, transparent=True)
-    logo_buf.seek(0)
-    logo_img = Image.open(logo_buf)
-    
-    # Logo im Poster anzeigen
-    logo_extent = [0.2, 0.4, 0.2, 0.8]  # [links, rechts, unten, oben]
-    ax_logo.imshow(logo_img, extent=logo_extent)
-    
-    # Füge den Text "42ND" neben dem Logo hinzu
-    ax_logo.text(0.45, 0.5, "42ND", fontsize=14, fontweight='bold', ha='left', va='center')
+    ax_logo.text(0.5, 0.5, "42ND", fontsize=14, fontweight='bold', color='navy', ha='center', va='center')
     
     # Details: Athlet, Distanz, Zeit, Pace
-    ax_details = fig.add_subplot(grid[3])
+    ax_details = fig.add_subplot(grid[12:])
     ax_details.axis('off')
     
-    # Zeile für Athletennamen und Startnummer
-    ax_details.text(0.25, 0.7, f"{athlete_name}", fontsize=18, fontweight='bold', ha='center', va='center')
-    ax_details.text(0.75, 0.7, f"#{bib_number}", fontsize=16, ha='center', va='center')
+    # Zeile für Athletennamen und Startnummer mit mehr Abstand - wie im Original
+    ax_details.text(0.15, 0.6, f"{athlete_name}", fontsize=18, fontweight='bold', ha='left', va='center')
+    ax_details.text(0.85, 0.6, f"#{bib_number}", fontsize=16, ha='right', va='center')
     
-    # Zeile für Distanz, Zeit und Pace
-    ax_details.text(0.25, 0.3, f"{distance}\nKM", fontsize=14, ha='center', va='center')
-    ax_details.text(0.5, 0.3, f"{time}\nTIME", fontsize=14, ha='center', va='center')
-    ax_details.text(0.75, 0.3, f"{pace}\n/KM", fontsize=14, ha='center', va='center')
-    
-    # Footer: Platz für QR-Code oder zusätzliche Informationen
-    ax_footer = fig.add_subplot(grid[4])
-    ax_footer.axis('off')
+    # Zeile für Distanz, Zeit und Pace - wie im Original
+    ax_details.text(0.15, 0.2, f"{distance}\nKM", fontsize=14, ha='left', va='center')
+    ax_details.text(0.5, 0.2, f"{time}\nTIME", fontsize=14, ha='center', va='center')
+    ax_details.text(0.85, 0.2, f"{pace}\n/KM", fontsize=14, ha='right', va='center')
     
     fig.tight_layout()
     
@@ -249,6 +225,27 @@ def create_poster(map_fig, marathon_name, event_date, athlete_name, bib_number, 
     buf.seek(0)
     
     return buf
+
+# Formatieren des Datums in ein einheitliches Format
+def format_date(date_str):
+    try:
+        # Verschiedene Datumsformate probieren
+        date_formats = ['%d.%m.%Y', '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y']
+        parsed_date = None
+        
+        for fmt in date_formats:
+            try:
+                parsed_date = datetime.strptime(date_str, fmt)
+                break
+            except ValueError:
+                continue
+        
+        if parsed_date:
+            return parsed_date.strftime('%d %B %Y').upper()
+        else:
+            return date_str.upper()
+    except:
+        return date_str.upper()
 
 # Streamlit UI
 st.title("Marathon Poster Generator")
@@ -262,7 +259,7 @@ col1, col2 = st.columns(2)
 
 with col1:
     marathon_name = st.text_input("Marathon Name", "VIENNA CITY MARATHON")
-    event_date = st.text_input("Datum (TT.MM.JJJJ)", "06.04.2025")
+    event_date = st.text_input("Datum", "6 APRIL 2025")
     athlete_name = st.text_input("Athlet Name", "ATHLETE NAME")
     bib_number = st.text_input("Startnummer", "1234")
 
@@ -298,6 +295,9 @@ with col4:
 smoothing_factor = st.slider("Glättungsfaktor der Strecke", 1, 20, 5, 
                             help="Höhere Werte sorgen für eine glattere Strecke")
 
+# Formatiere das Datum
+formatted_date = format_date(event_date)
+
 if gpx_file is not None:
     df = load_gpx_file(gpx_file)
     
@@ -311,7 +311,7 @@ if gpx_file is not None:
         map_fig = generate_map(df_clean, map_color, route_color, start_color, end_color)
         
         # Poster erstellen
-        poster_buffer = create_poster(map_fig, marathon_name, event_date, athlete_name, 
+        poster_buffer = create_poster(map_fig, marathon_name, formatted_date, athlete_name, 
                                       bib_number, distance, time, pace)
         
         # Vorschau und Download-Button anzeigen
@@ -338,28 +338,9 @@ else:
 # Füge eine Beispiel-GPX-Datei hinzu
 st.markdown("### Keine GPX-Datei? Probiere ein Beispiel!")
 
-if st.button("Beispiel-GPX laden"):
-    # Einfache Beispiel-GPX-Daten erstellen (ein Kreis um das Zentrum von Wien)
-    center_lat, center_lon = 48.2082, 16.3719  # Wien Zentrum
-    radius = 0.02  # ungefähr 2km
-    num_points = 200
-    
-    angle = np.linspace(0, 2*np.pi, num_points)
-    lats = center_lat + radius * np.cos(angle) * 0.7  # Ellipse statt Kreis
-    lons = center_lon + radius * np.sin(angle)
-    
-    # Füge etwas Variation hinzu, um es realistischer zu machen
-    np.random.seed(42)  # Für reproduzierbare Ergebnisse
-    lats += np.random.normal(0, 0.0005, num_points)
-    lons += np.random.normal(0, 0.0005, num_points)
-    
-    # Erstelle DataFrame
-    example_df = pd.DataFrame({
-        'lat': lats,
-        'lon': lons,
-        'elevation': np.zeros(num_points),
-        'time': [datetime.now()] * num_points
-    })
+if st.button("Beispiel-Route laden"):
+    # Beispielroute erstellen
+    example_df = create_example_route()
     
     # Bereinigen
     example_df_clean = clean_gps_data(example_df, smoothing_factor)
@@ -368,7 +349,7 @@ if st.button("Beispiel-GPX laden"):
     example_map_fig = generate_map(example_df_clean, map_color, route_color, start_color, end_color)
     
     # Poster erstellen
-    example_poster_buffer = create_poster(example_map_fig, marathon_name, event_date, athlete_name, 
+    example_poster_buffer = create_poster(example_map_fig, marathon_name, formatted_date, athlete_name, 
                                         bib_number, distance, time, pace)
     
     # Vorschau anzeigen
@@ -387,12 +368,5 @@ if st.button("Beispiel-GPX laden"):
 st.markdown("""
 ## GitHub und Streamlit Bereitstellung
 
-Diese Anwendung kann auf GitHub gehostet und über Streamlit Cloud bereitgestellt werden:
-
-1. Erstelle ein GitHub-Repository
-2. Füge diese `app.py` Datei hinzu
-3. Erstelle eine `requirements.txt` Datei
-4. Stelle die App auf Streamlit Cloud bereit
-
-Für detaillierte Anweisungen, siehe die Erklärung unten.
+Diese Anwendung kann auf GitHub gehostet und über Streamlit Cloud bereitgestellt werden.
 """)
