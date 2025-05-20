@@ -1,5 +1,3 @@
-# marathon-poster-generator
-
 # Marathon Poster Generator
 
 Eine Streamlit-Anwendung zur Erstellung von personalisierten Marathon-Postern aus GPX-Dateien.
