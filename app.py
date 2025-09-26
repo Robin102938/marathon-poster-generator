@@ -35,6 +35,17 @@ def load_gpx_file(gpx_file):
         st.error(f"Fehler beim Laden der GPX-Datei: {e}")
         return None
 
+# Funktion zum Bereinigen der GPS-Daten
+def clean_gps_data(df, smoothing_factor=5):
+    if len(df) <= smoothing_factor:
+        return df
+    
+    # Auffüllen von NaN-Werten am Anfang und Ende
+    df['lat_smooth'] = df['lat_smooth'].fillna(df['lat'])
+    df['lon_smooth'] = df['lon_smooth'].fillna(df['lon'])
+    
+    return df
+
 # Funktion zum Generieren einer simplen Route-Karte im Stil des Originalposters
 def generate_map(df, map_color, route_color, start_color, end_color):
     # Definieren der Farbpalette
@@ -73,8 +84,11 @@ def generate_map(df, map_color, route_color, start_color, end_color):
     fig = Figure(figsize=(10, 3), dpi=300, facecolor=background_color)
     ax = fig.add_subplot(111)
     
-    # Route plotten - verwende die ursprünglichen Daten direkt
-    ax.plot(df['lon'], df['lat'], color=line_color, linewidth=2.5, zorder=2)
+    # Route plotten
+    if 'lat_smooth' in df.columns and 'lon_smooth' in df.columns:
+        ax.plot(df['lon_smooth'], df['lat_smooth'], color=line_color, linewidth=2.5, zorder=2)
+    else:
+        ax.plot(df['lon'], df['lat'], color=line_color, linewidth=2.5, zorder=2)
     
     # Start- und Endpunkte
     start_point = df.iloc[0]
@@ -273,6 +287,10 @@ with col4:
     end_color = st.selectbox("Zielpunkt-Farbe", 
                             ['Gold', 'Weiß', 'Rot', 'Blau', 'Grün'])
 
+# Glättungsfaktor
+smoothing_factor = st.slider("Glättungsfaktor der Strecke", 1, 20, 5, 
+                            help="Höhere Werte sorgen für eine glattere Strecke")
+
 # Formatiere das Datum
 formatted_date = format_date(event_date)
 
@@ -282,8 +300,11 @@ if gpx_file is not None:
     if df is not None and not df.empty:
         st.success("GPX-Datei erfolgreich geladen!")
         
-        # Karte generieren - verwende die ursprünglichen Daten direkt
-        map_fig = generate_map(df, map_color, route_color, start_color, end_color)
+        # Daten bereinigen
+        df_clean = clean_gps_data(df, smoothing_factor)
+        
+        # Karte generieren
+        map_fig = generate_map(df_clean, map_color, route_color, start_color, end_color)
         
         # Poster erstellen
         poster_buffer = create_poster(map_fig, marathon_name, formatted_date, athlete_name, 
@@ -317,8 +338,11 @@ if st.button("Beispiel-Route laden"):
     # Beispielroute erstellen
     example_df = create_example_route()
     
-    # Karte generieren - verwende die ursprünglichen Daten direkt
-    example_map_fig = generate_map(example_df, map_color, route_color, start_color, end_color)
+    # Bereinigen
+    example_df_clean = clean_gps_data(example_df, smoothing_factor)
+    
+    # Karte generieren
+    example_map_fig = generate_map(example_df_clean, map_color, route_color, start_color, end_color)
     
     # Poster erstellen
     example_poster_buffer = create_poster(example_map_fig, marathon_name, formatted_date, athlete_name, 
