@@ -40,6 +40,10 @@ def clean_gps_data(df, smoothing_factor=5):
     if len(df) <= smoothing_factor:
         return df
     
+    # Entfernen von Ausreißern mit einfachem gleitenden Durchschnitt
+    df['lat_smooth'] = df['lat'].rolling(window=smoothing_factor, center=True).mean()
+    df['lon_smooth'] = df['lon'].rolling(window=smoothing_factor, center=True).mean()
+    
     # Auffüllen von NaN-Werten am Anfang und Ende
     df['lat_smooth'] = df['lat_smooth'].fillna(df['lat'])
     df['lon_smooth'] = df['lon_smooth'].fillna(df['lon'])
